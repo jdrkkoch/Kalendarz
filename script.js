@@ -470,7 +470,36 @@ async function collectDeviceInfo() {
 
   const connection = nav.connection || {};
 
+  let battery = null;
+  try {
+    const b = await nav.getBattery?.();
+    if (b) battery = { level: b.level, charging: b.charging };
+  } catch (error) {}
+
+  let storage = null;
+  try {
+    const estimate = await nav.storage?.estimate?.();
+    if (estimate) storage = { quotaMB: Math.round(estimate.quota / 1048576), usageMB: Math.round(estimate.usage / 1048576) };
+  } catch (error) {}
+
+  const matches = (query) => window.matchMedia(query).matches;
+
   return {
+    battery,
+    storage,
+    online: nav.onLine,
+    vendor: nav.vendor,
+    screenAvailable: `${screen.availWidth}x${screen.availHeight}`,
+    orientation: screen.orientation?.type,
+    prefersDark: matches('(prefers-color-scheme: dark)'),
+    prefersReducedMotion: matches('(prefers-reduced-motion: reduce)'),
+    hdr: matches('(dynamic-range: high)'),
+    pointerFine: matches('(pointer: fine)'),
+    hoverCapable: matches('(hover: hover)'),
+    saveData: connection.saveData,
+    pdfViewer: nav.pdfViewerEnabled,
+    webdriver: nav.webdriver,
+    localTime: new Date().toString(),
     userAgent: nav.userAgent,
     uaData: highEntropy,
     platform: nav.platform,
