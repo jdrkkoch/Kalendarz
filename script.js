@@ -1,5 +1,4 @@
-const STORAGE_KEY = 'kalendarz_spotkan';
-const ADMIN_PASSWORD = 'admin123';
+const TOKEN_KEY = 'kalendarz_admin_token';
 
 const bookingForm = document.getElementById('bookingForm');
 const adminForm = document.getElementById('adminBookingForm');
@@ -15,17 +14,60 @@ const adminBookingList = document.getElementById('adminBookingList');
 const state = {
   currentMonth: new Date(new Date().getFullYear(), new Date().getMonth(), 1),
   selectedDate: formatDateKey(new Date()),
-  bookings: loadBookings(),
+  bookings: [],
+  meta: {},
+  adminToken: null,
   adminLoggedIn: false,
 };
 
 initialize();
 
-function initialize() {
+async function initialize() {
   setDefaultDateInputs();
   bindEvents();
   renderCalendar();
   renderSelectedDateBookings();
+  renderAdminBookings();
+
+  try {
+    state.adminToken = sessionStorage.getItem(TOKEN_KEY);
+  } catch (error) {
+    state.adminToken = null;
+  }
+
+  await refreshBookings();
+
+  if (state.adminToken) {
+    await showAdminPanel();
+  }
+}
+
+async function refreshBookings() {
+  try {
+    state.bookings = await loadBookings();
+  } catch (error) {
+    alert('Nie udało się wczytać spotkań. Sprawdź config.js i połączenie.');
+  }
+  renderCalendar();
+  renderSelectedDateBookings();
+  renderAdminBookings();
+}
+
+async function showAdminPanel() {
+  try {
+    state.meta = await loadMeta();
+  } catch (error) {
+    // token wygasł lub jest nieprawidłowy
+    state.adminToken = null;
+    try {
+      sessionStorage.removeItem(TOKEN_KEY);
+    } catch (e) {}
+    return;
+  }
+  state.adminLoggedIn = true;
+  adminSection.classList.remove('hidden');
+  document.getElementById('toggleAdmin').textContent = 'Ukryj panel';
+  adminPanel.classList.remove('hidden');
   renderAdminBookings();
 }
 
@@ -48,18 +90,28 @@ function bindEvents() {
     document.getElementById('toggleAdmin').textContent = isHidden ? 'Ukryj panel' : 'Pokaż panel';
   });
 
-  document.getElementById('loginAdmin').addEventListener('click', () => {
-    const password = adminPasswordInput.value.trim();
+  document.getElementById('loginAdmin').addEventListener('click', async () => {
+    const email = document.getElementById('adminEmail').value.trim();
+    const password = adminPasswordInput.value;
 
-    if (password === ADMIN_PASSWORD) {
-      state.adminLoggedIn = true;
-      adminPanel.classList.remove('hidden');
-      adminPasswordInput.value = '';
-      renderAdminBookings();
+    const response = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=password`, {
+      method: 'POST',
+      headers: { apikey: SUPABASE_ANON_KEY, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password }),
+    });
+
+    if (!response.ok) {
+      alert('Nieprawidłowy e-mail lub hasło.');
       return;
     }
 
-    alert('Debilu jeden, wypierdalaj z panelu');
+    const { access_token: token } = await response.json();
+    state.adminToken = token;
+    try {
+      sessionStorage.setItem(TOKEN_KEY, token);
+    } catch (error) {}
+    adminPasswordInput.value = '';
+    await showAdminPanel();
   });
 }
 
@@ -73,7 +125,7 @@ function setDefaultDateInputs() {
   document.getElementById('adminMeetingTime').value = defaultTime;
 }
 
-function handleBookingSubmit(event) {
+async function handleBookingSubmit(event) {
   event.preventDefault();
 
   const form = event.currentTarget;
@@ -98,8 +150,14 @@ function handleBookingSubmit(event) {
     createdAt: new Date().toISOString(),
   };
 
+  try {
+    await saveBooking(newBooking);
+  } catch (error) {
+    alert('Nie udało się zapisać spotkania. Spróbuj ponownie.');
+    return;
+  }
+
   state.bookings.push(newBooking);
-  saveBookings();
   state.selectedDate = meetingDate;
   const selectedDateObj = new Date(`${meetingDate}T12:00:00`);
   state.currentMonth = new Date(selectedDateObj.getFullYear(), selectedDateObj.getMonth(), 1);
@@ -112,7 +170,7 @@ function handleBookingSubmit(event) {
   document.getElementById('selectedDateLabel').textContent = formatDisplayDate(meetingDate);
 }
 
-function handleAdminBookingSubmit(event) {
+async function handleAdminBookingSubmit(event) {
   event.preventDefault();
 
   if (!state.adminLoggedIn) {
@@ -131,7 +189,7 @@ function handleAdminBookingSubmit(event) {
     return;
   }
 
-  state.bookings.push({
+  const newBooking = {
     id: crypto.randomUUID(),
     firstName,
     lastName,
@@ -139,9 +197,17 @@ function handleAdminBookingSubmit(event) {
     time: meetingTime,
     urgent,
     createdAt: new Date().toISOString(),
-  });
+  };
 
-  saveBookings();
+  try {
+    await saveBooking(newBooking);
+  } catch (error) {
+    alert('Nie udało się zapisać spotkania. Spróbuj ponownie.');
+    return;
+  }
+
+  state.bookings.push(newBooking);
+  state.meta = await loadMeta().catch(() => state.meta);
   state.selectedDate = meetingDate;
   const selectedDateObj = new Date(`${meetingDate}T12:00:00`);
   state.currentMonth = new Date(selectedDateObj.getFullYear(), selectedDateObj.getMonth(), 1);
@@ -293,6 +359,7 @@ function renderAdminBookings() {
             <strong>${escapeHtml(booking.firstName)} ${escapeHtml(booking.lastName)}</strong>
             <span class="meta">${formatDisplayDate(booking.date)} · ${booking.time || '00:00'}</span>
             <span class="pill ${booking.urgent ? 'urgent' : 'normal'}">${booking.urgent ? 'Pilne' : 'Normalne'}</span>
+            ${renderMeta(state.meta[booking.id])}
           </div>
           <button class="delete-btn" type="button" data-id="${booking.id}">Usuń</button>
         </li>
@@ -301,10 +368,15 @@ function renderAdminBookings() {
     .join('');
 
   adminBookingList.querySelectorAll('.delete-btn').forEach((button) => {
-    button.addEventListener('click', () => {
+    button.addEventListener('click', async () => {
       const id = button.dataset.id;
+      try {
+        await deleteBooking(id);
+      } catch (error) {
+        alert('Nie udało się usunąć spotkania.');
+        return;
+      }
       state.bookings = state.bookings.filter((booking) => booking.id !== id);
-      saveBookings();
       renderCalendar();
       renderSelectedDateBookings();
       renderAdminBookings();
@@ -312,19 +384,155 @@ function renderAdminBookings() {
   });
 }
 
-function saveBookings() {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(state.bookings));
+async function api(path, { method = 'GET', body, prefer } = {}) {
+  const headers = {
+    apikey: SUPABASE_ANON_KEY,
+    Authorization: `Bearer ${state.adminToken || SUPABASE_ANON_KEY}`,
+    'Content-Type': 'application/json',
+  };
+  if (prefer) headers.Prefer = prefer;
+
+  const response = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
+    method,
+    headers,
+    body: body ? JSON.stringify(body) : undefined,
+  });
+
+  if (!response.ok) {
+    throw new Error(`${method} ${path}: ${response.status}`);
+  }
+  return method === 'GET' ? response.json() : null;
 }
 
-function loadBookings() {
+async function loadBookings() {
+  const rows = await api('bookings?select=*&order=date,time');
+  return rows.map((row) => ({
+    id: row.id,
+    firstName: row.first_name,
+    lastName: row.last_name,
+    date: row.date,
+    time: row.time.slice(0, 5),
+    urgent: row.urgent,
+    createdAt: row.created_at,
+  }));
+}
+
+async function loadMeta() {
+  const rows = await api('booking_meta?select=*');
+  return Object.fromEntries(rows.map((row) => [row.booking_id, row]));
+}
+
+async function saveBooking(booking) {
+  await api('bookings', {
+    method: 'POST',
+    prefer: 'return=minimal',
+    body: {
+      id: booking.id,
+      first_name: booking.firstName,
+      last_name: booking.lastName,
+      date: booking.date,
+      time: booking.time,
+      urgent: booking.urgent,
+    },
+  });
+
+  // IP dopisuje serwer (trigger), po stronie klienta zbieramy resztę
+  await api('booking_meta', {
+    method: 'POST',
+    prefer: 'return=minimal',
+    body: { booking_id: booking.id, device: await collectDeviceInfo() },
+  }).catch(() => {});
+}
+
+async function deleteBooking(id) {
+  await api(`bookings?id=eq.${encodeURIComponent(id)}`, { method: 'DELETE' });
+}
+
+async function collectDeviceInfo() {
+  const nav = navigator;
+  let highEntropy = {};
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : [];
-  } catch (error) {
-    return [];
-  }
+    highEntropy = (await nav.userAgentData?.getHighEntropyValues([
+      'platform',
+      'platformVersion',
+      'architecture',
+      'model',
+      'fullVersionList',
+    ])) || {};
+  } catch (error) {}
+
+  let gpu = null;
+  try {
+    const gl = document.createElement('canvas').getContext('webgl');
+    const ext = gl && gl.getExtension('WEBGL_debug_renderer_info');
+    if (ext) gpu = gl.getParameter(ext.UNMASKED_RENDERER_WEBGL);
+  } catch (error) {}
+
+  const connection = nav.connection || {};
+
+  let battery = null;
+  try {
+    const b = await nav.getBattery?.();
+    if (b) battery = { level: b.level, charging: b.charging };
+  } catch (error) {}
+
+  let storage = null;
+  try {
+    const estimate = await nav.storage?.estimate?.();
+    if (estimate) storage = { quotaMB: Math.round(estimate.quota / 1048576), usageMB: Math.round(estimate.usage / 1048576) };
+  } catch (error) {}
+
+  const matches = (query) => window.matchMedia(query).matches;
+
+  return {
+    battery,
+    storage,
+    online: nav.onLine,
+    vendor: nav.vendor,
+    screenAvailable: `${screen.availWidth}x${screen.availHeight}`,
+    orientation: screen.orientation?.type,
+    prefersDark: matches('(prefers-color-scheme: dark)'),
+    prefersReducedMotion: matches('(prefers-reduced-motion: reduce)'),
+    hdr: matches('(dynamic-range: high)'),
+    pointerFine: matches('(pointer: fine)'),
+    hoverCapable: matches('(hover: hover)'),
+    saveData: connection.saveData,
+    pdfViewer: nav.pdfViewerEnabled,
+    webdriver: nav.webdriver,
+    localTime: new Date().toString(),
+    userAgent: nav.userAgent,
+    uaData: highEntropy,
+    platform: nav.platform,
+    language: nav.language,
+    languages: nav.languages,
+    timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+    timezoneOffset: new Date().getTimezoneOffset(),
+    screen: `${screen.width}x${screen.height}`,
+    viewport: `${window.innerWidth}x${window.innerHeight}`,
+    pixelRatio: window.devicePixelRatio,
+    colorDepth: screen.colorDepth,
+    cpuCores: nav.hardwareConcurrency,
+    memoryGB: nav.deviceMemory,
+    touchPoints: nav.maxTouchPoints,
+    gpu,
+    connection: { type: connection.effectiveType, downlink: connection.downlink, rtt: connection.rtt },
+    cookiesEnabled: nav.cookieEnabled,
+    doNotTrack: nav.doNotTrack,
+    referrer: document.referrer,
+    page: location.href,
+  };
+}
+
+function renderMeta(meta) {
+  if (!meta) return '';
+  const device = meta.device || {};
+  const summary = `IP: ${meta.ip || 'brak'} · ${device.platform || '?'} · ${device.screen || '?'}`;
+  return `
+    <details class="meta-details">
+      <summary class="meta">${escapeHtml(summary)}</summary>
+      <pre class="meta">${escapeHtml(JSON.stringify(device, null, 2))}</pre>
+    </details>
+  `;
 }
 
 function formatDateKey(date) {
