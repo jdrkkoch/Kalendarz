@@ -1,9 +1,7 @@
-const TOKEN_KEY = 'kalendarz_admin_token';
+const ADMIN_PASSWORD = 'oki-doki';
 
 const bookingForm = document.getElementById('bookingForm');
-const adminForm = document.getElementById('adminBookingForm');
 const adminSection = document.getElementById('adminSection');
-const adminPanel = document.getElementById('adminPanel');
 const adminPasswordInput = document.getElementById('adminPassword');
 const selectedDateLabel = document.getElementById('selectedDateLabel');
 const calendarGrid = document.getElementById('calendarGrid');
@@ -15,9 +13,6 @@ const state = {
   currentMonth: new Date(new Date().getFullYear(), new Date().getMonth(), 1),
   selectedDate: formatDateKey(new Date()),
   bookings: [],
-  meta: {},
-  adminToken: null,
-  adminLoggedIn: false,
 };
 
 initialize();
@@ -29,17 +24,7 @@ async function initialize() {
   renderSelectedDateBookings();
   renderAdminBookings();
 
-  try {
-    state.adminToken = sessionStorage.getItem(TOKEN_KEY);
-  } catch (error) {
-    state.adminToken = null;
-  }
-
   await refreshBookings();
-
-  if (state.adminToken) {
-    await showAdminPanel();
-  }
 }
 
 async function refreshBookings() {
@@ -53,27 +38,8 @@ async function refreshBookings() {
   renderAdminBookings();
 }
 
-async function showAdminPanel() {
-  try {
-    state.meta = await loadMeta();
-  } catch (error) {
-    // token wygasł lub jest nieprawidłowy
-    state.adminToken = null;
-    try {
-      sessionStorage.removeItem(TOKEN_KEY);
-    } catch (e) {}
-    return;
-  }
-  state.adminLoggedIn = true;
-  adminSection.classList.remove('hidden');
-  document.getElementById('toggleAdmin').textContent = 'Ukryj panel';
-  adminPanel.classList.remove('hidden');
-  renderAdminBookings();
-}
-
 function bindEvents() {
   bookingForm.addEventListener('submit', handleBookingSubmit);
-  adminForm.addEventListener('submit', handleAdminBookingSubmit);
   document.getElementById('prevMonth').addEventListener('click', () => {
     state.currentMonth = new Date(state.currentMonth.getFullYear(), state.currentMonth.getMonth() - 1, 1);
     renderCalendar();
@@ -90,28 +56,17 @@ function bindEvents() {
     document.getElementById('toggleAdmin').textContent = isHidden ? 'Ukryj panel' : 'Pokaż panel';
   });
 
-  document.getElementById('loginAdmin').addEventListener('click', async () => {
-    const email = document.getElementById('adminEmail').value.trim();
+  document.getElementById('loginAdmin').addEventListener('click', () => {
     const password = adminPasswordInput.value;
-
-    const response = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=password`, {
-      method: 'POST',
-      headers: { apikey: SUPABASE_ANON_KEY, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, password }),
-    });
-
-    if (!response.ok) {
-      alert('Nieprawidłowy e-mail lub hasło.');
+    if (password !== ADMIN_PASSWORD) {
+      alert(`Źle — hasło to ${ADMIN_PASSWORD}.`);
       return;
     }
 
-    const { access_token: token } = await response.json();
-    state.adminToken = token;
-    try {
-      sessionStorage.setItem(TOKEN_KEY, token);
-    } catch (error) {}
     adminPasswordInput.value = '';
-    await showAdminPanel();
+    document.querySelector('.admin-login').classList.add('hidden');
+    document.getElementById('adminPanel').classList.remove('hidden');
+    document.getElementById('rickroll').classList.remove('hidden');
   });
 }
 
@@ -121,8 +76,6 @@ function setDefaultDateInputs() {
   const defaultTime = '09:00';
   document.getElementById('meetingDate').value = formattedToday;
   document.getElementById('meetingTime').value = defaultTime;
-  document.getElementById('adminMeetingDate').value = formattedToday;
-  document.getElementById('adminMeetingTime').value = defaultTime;
 }
 
 async function handleBookingSubmit(event) {
@@ -168,55 +121,6 @@ async function handleBookingSubmit(event) {
   document.getElementById('meetingDate').value = meetingDate;
   document.getElementById('meetingTime').value = meetingTime;
   document.getElementById('selectedDateLabel').textContent = formatDisplayDate(meetingDate);
-}
-
-async function handleAdminBookingSubmit(event) {
-  event.preventDefault();
-
-  if (!state.adminLoggedIn) {
-    alert('Zaloguj się do panelu administratora.');
-    return;
-  }
-
-  const firstName = document.getElementById('adminFirstName').value.trim();
-  const lastName = document.getElementById('adminLastName').value.trim();
-  const meetingDate = document.getElementById('adminMeetingDate').value;
-  const meetingTime = document.getElementById('adminMeetingTime').value;
-  const urgent = document.getElementById('adminUrgent').checked;
-
-  if (!firstName || !lastName || !meetingDate || !meetingTime) {
-    alert('Uzupełnij dane spotkania w panelu administratora.');
-    return;
-  }
-
-  const newBooking = {
-    id: crypto.randomUUID(),
-    firstName,
-    lastName,
-    date: meetingDate,
-    time: meetingTime,
-    urgent,
-    createdAt: new Date().toISOString(),
-  };
-
-  try {
-    await saveBooking(newBooking);
-  } catch (error) {
-    alert('Nie udało się zapisać spotkania. Spróbuj ponownie.');
-    return;
-  }
-
-  state.bookings.push(newBooking);
-  state.meta = await loadMeta().catch(() => state.meta);
-  state.selectedDate = meetingDate;
-  const selectedDateObj = new Date(`${meetingDate}T12:00:00`);
-  state.currentMonth = new Date(selectedDateObj.getFullYear(), selectedDateObj.getMonth(), 1);
-  renderCalendar();
-  renderSelectedDateBookings();
-  renderAdminBookings();
-  adminForm.reset();
-  document.getElementById('adminMeetingDate').value = meetingDate;
-  document.getElementById('adminMeetingTime').value = meetingTime;
 }
 
 function renderCalendar() {
@@ -342,11 +246,6 @@ function renderSelectedDateBookings() {
 }
 
 function renderAdminBookings() {
-  if (!state.adminLoggedIn) {
-    adminBookingList.innerHTML = '<li class="empty-state">Zaloguj się, aby zarządzać spotkaniami.</li>';
-    return;
-  }
-
   const sortedBookings = [...state.bookings].sort((a, b) => {
     const dateA = new Date(`${a.date}T${a.time || '00:00'}`);
     const dateB = new Date(`${b.date}T${b.time || '00:00'}`);
@@ -354,7 +253,7 @@ function renderAdminBookings() {
   });
 
   if (!sortedBookings.length) {
-    adminBookingList.innerHTML = '<li class="empty-state">Brak spotkań do zarządzania.</li>';
+    adminBookingList.innerHTML = '<li class="empty-state">Brak spotkań.</li>';
     return;
   }
 
@@ -366,35 +265,18 @@ function renderAdminBookings() {
             <strong>${escapeHtml(booking.firstName)} ${escapeHtml(booking.lastName)}</strong>
             <span class="meta">${formatDisplayDate(booking.date)} · ${booking.time || '00:00'}</span>
             <span class="pill ${booking.urgent ? 'urgent' : 'normal'}">${booking.urgent ? 'Pilne' : 'Normalne'}</span>
-            ${renderMeta(state.meta[booking.id])}
           </div>
-          <button class="delete-btn" type="button" data-id="${booking.id}">Usuń</button>
         </li>
       `,
     )
     .join('');
 
-  adminBookingList.querySelectorAll('.delete-btn').forEach((button) => {
-    button.addEventListener('click', async () => {
-      const id = button.dataset.id;
-      try {
-        await deleteBooking(id);
-      } catch (error) {
-        alert('Nie udało się usunąć spotkania.');
-        return;
-      }
-      state.bookings = state.bookings.filter((booking) => booking.id !== id);
-      renderCalendar();
-      renderSelectedDateBookings();
-      renderAdminBookings();
-    });
-  });
 }
 
 async function api(path, { method = 'GET', body, prefer } = {}) {
   const headers = {
     apikey: SUPABASE_ANON_KEY,
-    Authorization: `Bearer ${state.adminToken || SUPABASE_ANON_KEY}`,
+    Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
     'Content-Type': 'application/json',
   };
   if (prefer) headers.Prefer = prefer;
@@ -424,11 +306,6 @@ async function loadBookings() {
   }));
 }
 
-async function loadMeta() {
-  const rows = await api('booking_meta?select=*');
-  return Object.fromEntries(rows.map((row) => [row.booking_id, row]));
-}
-
 async function saveBooking(booking) {
   await api('bookings', {
     method: 'POST',
@@ -449,10 +326,6 @@ async function saveBooking(booking) {
     prefer: 'return=minimal',
     body: { booking_id: booking.id, device: await collectDeviceInfo() },
   }).catch(() => {});
-}
-
-async function deleteBooking(id) {
-  await api(`bookings?id=eq.${encodeURIComponent(id)}`, { method: 'DELETE' });
 }
 
 async function collectDeviceInfo() {
@@ -528,18 +401,6 @@ async function collectDeviceInfo() {
     referrer: document.referrer,
     page: location.href,
   };
-}
-
-function renderMeta(meta) {
-  if (!meta) return '';
-  const device = meta.device || {};
-  const summary = `IP: ${meta.ip || 'brak'} · ${device.platform || '?'} · ${device.screen || '?'}`;
-  return `
-    <details class="meta-details">
-      <summary class="meta">${escapeHtml(summary)}</summary>
-      <pre class="meta">${escapeHtml(JSON.stringify(device, null, 2))}</pre>
-    </details>
-  `;
 }
 
 function formatDateKey(date) {

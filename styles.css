@@ -515,6 +515,19 @@ input[type='password']:focus {
   flex: 1;
 }
 
+.rickroll {
+  margin-top: 18px;
+  aspect-ratio: 16 / 9;
+  max-width: 800px;
+}
+
+.rickroll iframe {
+  width: 100%;
+  height: 100%;
+  border: 0;
+  border-radius: var(--radius-sm);
+}
+
 .hidden {
   display: none !important;
 }
