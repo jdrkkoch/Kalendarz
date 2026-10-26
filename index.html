@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="pl">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Kalendarz spotkań</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">Rezerwacje</p>
+          <h1>Kalendarz spotkań</h1>
+        </div>
+        <span class="status-pill">Nowoczesny planer</span>
+      </header>
+
+      <main class="layout-grid">
+        <section class="card booking-card">
+          <div class="section-heading">
+            <h2>Umów spotkanie</h2>
+          </div>
+
+          <form id="bookingForm" class="booking-form">
+            <div class="field-row two-columns">
+              <label>
+                <span>Imię</span>
+                <input id="firstName" name="firstName" type="text" placeholder="np. Anna" required />
+              </label>
+              <label>
+                <span>Nazwisko</span>
+                <input id="lastName" name="lastName" type="text" placeholder="np. Nowak" required />
+              </label>
+            </div>
+
+            <div class="field-row two-columns">
+              <label>
+                <span>Data spotkania</span>
+                <input id="meetingDate" name="meetingDate" type="date" required />
+              </label>
+              <label>
+                <span>Godzina</span>
+                <input id="meetingTime" name="meetingTime" type="time" required />
+              </label>
+            </div>
+
+            <label class="checkbox-row">
+              <input id="urgent" name="urgent" type="checkbox" />
+              <span>Spotkanie pilne</span>
+            </label>
+
+            <button type="submit" class="primary-btn">Dodaj spotkanie</button>
+          </form>
+        </section>
+
+        <section class="card calendar-card">
+          <div class="calendar-toolbar">
+            <button id="prevMonth" class="nav-btn" type="button" aria-label="Poprzedni miesiąc">&#8249;</button>
+            <h2 id="currentMonth">Miesiąc</h2>
+            <button id="nextMonth" class="nav-btn" type="button" aria-label="Następny miesiąc">&#8250;</button>
+          </div>
+
+          <div class="weekdays" aria-label="Dni tygodnia">
+            <span>Pn</span>
+            <span>Wt</span>
+            <span>Śr</span>
+            <span>Cz</span>
+            <span>Pt</span>
+            <span>So</span>
+            <span>Nd</span>
+          </div>
+
+          <div id="calendarGrid" class="calendar-grid" aria-live="polite"></div>
+        </section>
+
+        <aside class="card agenda-card">
+          <div class="section-heading">
+            <h2 id="selectedDateLabel">Spotkania</h2>
+          </div>
+          <ul id="dayBookings" class="booking-list"></ul>
+        </aside>
+      </main>
+
+      <section class="card admin-card">
+        <div class="admin-header">
+          <div>
+            <p class="eyebrow">Zabezpieczone</p>
+            <h2>Panel administratora</h2>
+          </div>
+          <button id="toggleAdmin" class="secondary-btn" type="button">Pokaż panel</button>
+        </div>
+
+        <div id="adminSection" class="admin-section hidden">
+          <div class="admin-login">
+            <label>
+              <span>Hasło</span>
+              <input id="adminPassword" type="password" placeholder="Wpisz hasło" />
+            </label>
+            <button id="loginAdmin" class="primary-btn" type="button">Zaloguj</button>
+          </div>
+
+          <div id="adminPanel" class="admin-panel hidden">
+            <form id="adminBookingForm" class="booking-form compact">
+              <div class="field-row two-columns">
+                <label>
+                  <span>Imię</span>
+                  <input id="adminFirstName" type="text" placeholder="np. Karol" required />
+                </label>
+                <label>
+                  <span>Nazwisko</span>
+                  <input id="adminLastName" type="text" placeholder="np. Wiśniewski" required />
+                </label>
+              </div>
+
+              <div class="field-row two-columns">
+                <label>
+                  <span>Data spotkania</span>
+                  <input id="adminMeetingDate" type="date" required />
+                </label>
+                <label>
+                  <span>Godzina</span>
+                  <input id="adminMeetingTime" type="time" required />
+                </label>
+              </div>
+
+              <label class="checkbox-row">
+                <input id="adminUrgent" type="checkbox" />
+                <span>Spotkanie pilne</span>
+              </label>
+
+              <button type="submit" class="primary-btn">Dodaj z panelu admina</button>
+            </form>
+
+            <div class="admin-table-wrap">
+              <ul id="adminBookingList" class="admin-list"></ul>
+            </div>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <script src="script.js"></script>
+  </body>
+</html>
