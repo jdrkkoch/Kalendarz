@@ -284,7 +284,14 @@ function renderCalendar() {
     } else {
       const placeholder = document.createElement('span');
       placeholder.className = 'day-number';
-      placeholder.textContent = i < startWeekday ? previousMonthDays - startWeekday + i + 1 : dateNumber;
+
+      if (i < startWeekday) {
+        placeholder.textContent = previousMonthDays - startWeekday + i + 1;
+      } else {
+        const nextMonthDay = i - (startWeekday + daysInMonth) + 1;
+        placeholder.textContent = nextMonthDay;
+      }
+
       cell.appendChild(placeholder);
     }
 
